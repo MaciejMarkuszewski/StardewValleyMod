@@ -23,6 +23,10 @@ namespace MultiplayerTime
         public bool InvisibleUI { get; set; } = false;
         public string HourFormat { get; set; } = "Default";
         public string InterfaceTheme { get; set; } = "Default";
+        // PR #3: pause when any player is paused instead of requiring all
+        public bool PauseWhenAnyPlayerPaused { get; set; } = false;
+        // Pause when all players share the same indoor location
+        public bool PauseWhenTogetherIndoors { get; set; } = false;
 
     }
 
@@ -222,6 +226,22 @@ namespace MultiplayerTime
                 getValue: () => this.Config.InterfaceTheme,
                 setValue: value => this.Config.InterfaceTheme = value,
                 allowedValues: new string[] { "Default", "Vintage V2", "Natural Dark Wood"}
+            );
+
+            api.AddBoolOption(
+                mod: this.ModManifest,
+                name: () => "Pause When Any Player Paused",
+                tooltip: () => "When enabled, time freezes if any player is in a menu or minigame. Default behavior requires all players to be paused.",
+                getValue: () => this.Config.PauseWhenAnyPlayerPaused,
+                setValue: value => this.Config.PauseWhenAnyPlayerPaused = value
+            );
+
+            api.AddBoolOption(
+                mod: this.ModManifest,
+                name: () => "Pause When Together Indoors",
+                tooltip: () => "When enabled, time freezes when all players are inside the same building.",
+                getValue: () => this.Config.PauseWhenTogetherIndoors,
+                setValue: value => this.Config.PauseWhenTogetherIndoors = value
             );
         }
 
@@ -853,6 +873,40 @@ namespace MultiplayerTime
 
         private bool ShouldTimePass()
         {
+            // Pause when all players are together in the same indoor location
+            if (Config.PauseWhenTogetherIndoors)
+            {
+                GameLocation localLocation = Game1.player.currentLocation;
+                if (localLocation != null && !localLocation.IsOutdoors)
+                {
+                    bool allColocated = true;
+                    foreach (Farmer farmer in Game1.getAllFarmers())
+                    {
+                        if (farmer.currentLocation?.Name != localLocation.Name)
+                        {
+                            allColocated = false;
+                            break;
+                        }
+                    }
+                    if (allColocated)
+                        return false;
+                }
+            }
+
+            // PR #3: pause if any player signals pause (inverted from default)
+            if (Config.PauseWhenAnyPlayerPaused)
+            {
+                foreach (PlayerList gracz in Gracze)
+                {
+                    if (gracz.message == 1)
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            // Default: pause only when ALL players signal pause
             foreach (PlayerList gracz in Gracze)
             {
                 if (gracz.message != 1)
